@@ -57,6 +57,9 @@ full_data <- bind_rows(data_g1, data_g2)
 
 # Time Frequency per Behaviour per Individual -----------------------------
 
+base_behaviours <- c("Abdomen Tapping", "Courtship.Start", "Freezing", "Leg Showcase",
+                     "Mounted", "Pedipalp Showcase", "Mounting.Start", "Retreat", "Grooming")
+
 behaviour_summary <- full_data %>%
   group_by(Group, File, Behaviour) %>%
   summarise(TotalBehaviourTime = sum(Duration), .groups = "drop") %>%
@@ -68,9 +71,32 @@ behaviour_summary <- full_data %>%
   ) %>%
   mutate(TimeFrequency = TotalBehaviourTime / TotalTime)
 
+global_behaviours_summary <- bind_rows(
+  lapply(base_behaviours, function(bhvr) {
+    full_data %>%
+      filter(str_detect(Behaviour, fixed(bhvr))) %>%  # any behaviour that contains this string
+      group_by(Group, File) %>%
+      summarise(TotalBehaviourTime = sum(Duration), .groups = "drop") %>%
+      left_join(
+        full_data %>%
+          group_by(Group, File) %>%
+          summarise(TotalTime = sum(Duration), .groups = "drop"),
+        by = c("Group", "File")
+      ) %>%
+      mutate(
+        Behaviour = paste(bhvr, "global"),
+        TimeFrequency = TotalBehaviourTime / TotalTime
+      ) %>%
+      select(Group, File, Behaviour, TotalBehaviourTime, TotalTime, TimeFrequency)
+  })
+)
+
+combined_summary <- bind_rows(behaviour_summary, global_behaviours_summary)
+
+
 # Summary Stats: Mean, SE, and n -----------------------------------------
 
-behaviour_stats <- behaviour_summary %>%
+behaviour_stats <- combined_summary %>%
   group_by(Group, Behaviour) %>%
   summarise(
     MeanTimeFreq = mean(TimeFrequency),
@@ -82,11 +108,11 @@ behaviour_stats <- behaviour_summary %>%
 # Paired Wilcoxon Tests ---------------------------------------------
 
 # Extract individual ID (shared across groups) from filename
-behaviour_summary <- behaviour_summary %>%
+combined_summary <- combined_summary %>%
   mutate(ID = str_extract(File, "(?<=Aggregated_)[^x]+"))
 
 # Wide format for paired testing
-behaviour_wide <- behaviour_summary %>%
+behaviour_wide <- combined_summary %>%
   select(ID, Group, Behaviour, TimeFrequency) %>%
   pivot_wider(names_from = Group, values_from = TimeFrequency)
 
