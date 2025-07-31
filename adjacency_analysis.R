@@ -1,5 +1,6 @@
 ### ADD REFERENCE
-### Behavioural Network Construction
+### Influence of Female Mating Status on Male Courtship Structure
+### Statistical Comparison of Courtship Structures
 
 # Packages and Data -------------------------------------------------------
 
@@ -41,7 +42,7 @@ trans_list1 <- get_all_transition_matrices(group1)
 trans_list2 <- get_all_transition_matrices(group2)
 
 
-# Wilcoxon Paired Tests ---------------------------------------------------
+# Wilcoxon Paired Tests with FDR correction ---------------------------------------------------
 
 names(trans_list1) <- sapply(names(trans_list1), get_female_id)
 names(trans_list2) <- sapply(names(trans_list2), get_female_id)
@@ -90,15 +91,22 @@ paired_data <- do.call(rbind, paired_rows)
 test_results <- paired_data %>%
   group_by(From, To) %>%
   summarise(
-    p_value = tryCatch(
-      wilcox.test(Unmated, Mated, paired = TRUE, exact = FALSE)$p.value,
+    wilcox = list(tryCatch(
+      wilcox.test(Unmated, Mated, paired = TRUE, exact = FALSE),
       error = function(e) NA
-    ),
+    )),
     mean_unmated = mean(Unmated),
     mean_mated = mean(Mated),
     .groups = "drop"
-  )
+  ) %>%
+  mutate(
+    p_value = sapply(wilcox, function(x) if (is.list(x)) x$p.value else NA),
+    V = sapply(wilcox, function(x) if (is.list(x)) x$statistic else NA)
+  ) %>%
+  select(-wilcox)
+
 
 test_results$p_adj <- p.adjust(test_results$p_value, method = "fdr")
 
 sig_results <- filter(test_results, p_adj < 0.05)
+

@@ -1,5 +1,8 @@
 ### ADD REFERENCE
-### Scoring analysis
+### Description of Male Courtship Behaviour
+### +
+### Influence of Female Mating Status on Male Courtship Structure
+### Statistical Comparison of Courtship Structures
 
 
 # Helper Functions --------------------------------------------------------
@@ -59,6 +62,26 @@ full_data <- bind_rows(data_g1, data_g2)
 
 base_behaviours <- c("Abdomen Tapping", "Courtship.Start", "Freezing", "Leg Showcase",
                      "Mounted", "Pedipalp Showcase", "Mounting.Start", "Retreat", "Grooming")
+
+all_combinations <- full_data %>%
+  distinct(Group, File) %>%
+  crossing(Behaviour = base_behaviours)
+
+behaviour_time_summary <- full_data %>%
+  group_by(Group, File, Behaviour) %>%
+  summarise(TotalBehaviourTime = sum(Duration), .groups = "drop")
+
+behaviour_time_complete <- all_combinations %>%
+  left_join(behaviour_time_summary, by = c("Group", "File", "Behaviour")) %>%
+  mutate(TotalBehaviourTime = replace_na(TotalBehaviourTime, 0))
+
+total_time_per_file <- full_data %>%
+  group_by(Group, File) %>%
+  summarise(TotalTime = sum(Duration), .groups = "drop")
+
+behaviour_time_complete <- behaviour_time_complete %>%
+  left_join(total_time_per_file, by = c("Group", "File")) %>%
+  mutate(TimeFrequency = TotalBehaviourTime / TotalTime)
 
 behaviour_summary <- full_data %>%
   group_by(Group, File, Behaviour) %>%
@@ -156,3 +179,60 @@ final_results <- behaviour_stats_wide %>%
     statistic, p_value
   )
 View(final_results)
+
+
+# Discrete Behaviour Analysis ---------------------------------------------
+
+discrete_behaviours <- c("Abdomen Tapping", "Retreat")
+
+# Count occurrences
+discrete_counts <- full_data %>%
+  filter(Behaviour %in% discrete_behaviours) %>%
+  group_by(Group, File, Behaviour) %>%
+  summarise(Occurrences = n(), .groups = "drop") %>%
+  mutate(ID = str_extract(File, "(?<=Aggregated_)[^x]+"))
+
+# Summary stats per group
+discrete_stats <- discrete_counts %>%
+  group_by(Group, Behaviour) %>%
+  summarise(
+    MeanOccurrences = mean(Occurrences),
+    SEOccurrences = sd(Occurrences) / sqrt(n()),
+    N = n(),
+    .groups = "drop"
+  )
+
+# Pivot to wide for paired test
+discrete_wide <- discrete_counts %>%
+  select(ID, Group, Behaviour, Occurrences) %>%
+  pivot_wider(names_from = Group, values_from = Occurrences)
+
+# Wilcoxon paired test
+discrete_wilcoxon <- discrete_wide %>%
+  group_by(Behaviour) %>%
+  summarise(
+    p_value = if (sum(!is.na(unmated) & !is.na(mated)) >= 3) {
+      wilcox.test(unmated, mated, paired = TRUE, exact = FALSE)$p.value
+    } else { NA_real_ },
+    statistic = if (sum(!is.na(unmated) & !is.na(mated)) >= 3) {
+      wilcox.test(unmated, mated, paired = TRUE, exact = FALSE)$statistic
+    } else { NA_real_ },
+    .groups = "drop"
+  )
+
+# Final results for discrete behaviours
+discrete_results <- discrete_stats %>%
+  pivot_wider(
+    names_from = Group,
+    values_from = c(MeanOccurrences, SEOccurrences, N),
+    names_sep = "_"
+  ) %>%
+  left_join(discrete_wilcoxon, by = "Behaviour") %>%
+  select(
+    Behaviour,
+    MeanOccurrences_unmated, SEOccurrences_unmated, N_unmated,
+    MeanOccurrences_mated, SEOccurrences_mated, N_mated,
+    statistic, p_value
+  )
+
+View(discrete_results)
