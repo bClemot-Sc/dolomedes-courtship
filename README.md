@@ -1,4 +1,5 @@
-# Impact of Female Mating Status on Male Courtship Behaviour in the Sexually Cannibalistic New Zealand Fishing Spider *Dolomedes minor* (Araneae, Dolomedidae)
+# Impact of Female Mating Status on Male Courtship Behaviour in a Sexually Cannibalistic New Zealand Fishing Spider 
+# Bastien E Clémot, Simon J Connolly, Christina J Painting
 
 # Data Analysis (R Version 4.3.3)
 
