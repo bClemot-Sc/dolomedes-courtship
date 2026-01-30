@@ -17,6 +17,76 @@ unmated.df <- data %>% filter(female.mated.before==FALSE)
 mated.df <- data %>% filter(female.mated.before==TRUE)
 
 
+# Summary Statistics --------------------------------------------------------
+
+vars <- c(
+  "latency.to.court", "latency.to.mount",
+  "first.courtship.duration", "first.mounting.duration",
+  "nb.flees", "nb.courtships", "nb.mounts"
+)
+
+# Compute per group Mean and SE
+group_stats <- data %>%
+  pivot_longer(
+    cols = all_of(vars),
+    names_to = "Variable",
+    values_to = "Value"
+  ) %>%
+  group_by(female.mated.before, Variable) %>%
+  summarise(
+    Mean = mean(Value, na.rm = TRUE),
+    SE   = sd(Value, na.rm = TRUE) / sqrt(sum(!is.na(Value))),
+    N    = sum(!is.na(Value)),
+    .groups = "drop"
+  ) %>%
+  mutate(Group = ifelse(female.mated.before, "mated", "unmated")) %>%
+  select(-female.mated.before)
+
+# Compute paired Mean difference and SE 
+paired_diff <- data %>%
+  pivot_longer(
+    cols = all_of(vars),
+    names_to = "Variable",
+    values_to = "Value"
+  ) %>%
+  select(female, female.mated.before, Variable, Value) %>%
+  pivot_wider(
+    id_cols = c(female, Variable),  
+    names_from = female.mated.before,
+    values_from = Value
+  ) %>%
+  rename(
+    unmated = `FALSE`,
+    mated   = `TRUE`
+  ) %>%
+  filter(!is.na(unmated) & !is.na(mated)) %>%
+  mutate(Diff = unmated - mated) %>%
+  group_by(Variable) %>%
+  summarise(
+    MeanDiff = mean(Diff),
+    SEDiff   = sd(Diff) / sqrt(n()),
+    N_pairs  = n(),
+    .groups = "drop"
+  )
+
+# Results table
+final_summary <- group_stats %>%
+  pivot_wider(
+    names_from = Group,
+    values_from = c(Mean, SE, N),
+    names_sep = "_"
+  ) %>%
+  left_join(paired_diff, by = "Variable") %>%
+  select(
+    Variable,
+    Mean_unmated, SE_unmated, N_unmated,
+    Mean_mated,   SE_mated,   N_mated,
+    MeanDiff, SEDiff, N_pairs
+  )
+
+View(final_summary)
+
+
 # Normality Tests --------------------------------------------------------
 
 variables <- c("latency.to.court", "first.courtship.duration",
@@ -132,40 +202,52 @@ plot_data <- clean_data %>%
 cb_palette <- c("Unmated" = "#E69F00", "Mated" = "#56B4E9")
 
 # Plot
-ggplot(plot_data, aes(x = Group, y = CleanValue, fill = Group)) +
-  geom_violin(alpha = 0.4, color = NA, show.legend = FALSE) +
-  geom_boxplot(width = 0.1, outlier.shape = NA, show.legend = FALSE) +
+pos <- position_dodge(width = 0.05)
+ggplot(plot_data, aes(x = Group, y = CleanValue, fill = Group, group = female)) + 
+  geom_violin(aes(group = Group), alpha = 0.4, color = NA, show.legend = FALSE) + 
+  geom_boxplot(aes(group = Group), width = 0.1, outlier.shape = NA, show.legend = FALSE) + 
   
-  geom_jitter(
+  # Segments linking the pairs
+  geom_line(
     data = subset(plot_data, !Missing),
-    width = 0.05, size = 1.5, alpha = 0.7,
-    shape = 21, color = "black", show.legend = FALSE
+    position = pos,
+    color = "gray40",
+    alpha = 0.4,
+    linewidth = 0.5,
+    show.legend = FALSE
   ) +
   
-  geom_jitter(
-    data = subset(plot_data, Missing),
-    aes(y = Value),
-    width = 0.08, size = 1.5, alpha = 0.7,
-    shape = 21, fill = "red", color = "black", show.legend = FALSE
-  ) +
+  geom_point( 
+    data = subset(plot_data, !Missing), 
+    position = pos, width=0.08,
+    size = 2, alpha = 0.7, 
+    shape = 21, color = "black", show.legend = FALSE 
+  ) + 
   
-  scale_fill_manual(values = cb_palette) +
-  scale_y_continuous(limits = c(-100, NA), expand = expansion(mult = c(0, 0.05))) +
-  facet_wrap(~ Variable, scales = "free_y", ncol = 2) +
-  labs(
-    title = "Comparison of Behavioural Variables (s) between Groups filtered by Pairs",
-    x = "",
-    y = "Value",
-    caption = "Points represent individual measurements; Red points were removed for pair analysis\nViolins show distribution; Boxes show median and IQR"
-  ) +
-  theme_minimal(base_size = 14) +
-  theme(
-    strip.text = element_text(face = "bold", size = 14),
-    axis.text.x = element_text(face = "bold", size = 12),
-    axis.title.y = element_text(size = 13),
-    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
-    plot.caption = element_text(size = 10, face = "italic"),
-    legend.position = "none"
+  geom_jitter( 
+    data = subset(plot_data, Missing), 
+    aes(y = Value, group = NULL), 
+    width = 0.05, size = 2, alpha = 0.7, 
+    shape = 21, fill = "red", color = "black", show.legend = FALSE 
+  ) + 
+  
+  scale_fill_manual(values = cb_palette) + 
+  scale_y_continuous(limits = c(-100, NA), expand = expansion(mult = c(0, 0.05))) + 
+  facet_wrap(~ Variable, scales = "free_y", ncol = 2) + 
+  labs( 
+    title = "Comparison of Behavioural Variables (s) between Groups filtered by Pairs", 
+    x = "", 
+    y = "Value", 
+    caption = "Points represent individual measurements; Red points were removed for pair analysis\nViolins show distribution; Boxes show median and IQR" 
+  ) + 
+  theme_minimal(base_size = 14) + 
+  theme( 
+    strip.text = element_text(face = "bold", size = 14), 
+    axis.text.x = element_text(face = "bold", size = 12), 
+    axis.title.y = element_text(size = 13), 
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5), 
+    plot.caption = element_text(size = 10, face = "italic"), 
+    legend.position = "none" 
   )
 
 
@@ -198,26 +280,42 @@ plot_data2$Variable <- factor(plot_data2$Variable, levels = c(
 cb_palette <- c("Unmated" = "#D81B60", "Mated" = "#56B4E9")
 
 # Plot
-ggplot(plot_data2, aes(x = Group, y = Value, fill = Group)) +
-  geom_violin(alpha = 0.4, color = NA, show.legend = FALSE) +
-  geom_boxplot(width = 0.1, outlier.shape = NA, show.legend = FALSE) +
+pos <- position_dodge(width = 0.05)
+ggplot(plot_data2, aes(x = Group, y = Value, fill = Group, group = female)) + 
+  geom_violin(aes(group = Group), alpha = 0.4, color = NA, show.legend = FALSE) + 
+  geom_boxplot(aes(group = Group), width = 0.1, outlier.shape = NA, show.legend = FALSE) + 
   
-  geom_jitter(width = 0.08, size = 1.5, alpha = 0.7, shape = 21, color = "black", show.legend = FALSE) +
-  
-  scale_fill_manual(values = cb_palette) +
-  scale_y_continuous(limits = c(-100, NA), expand = expansion(mult = c(0, 0.05))) +
-  facet_wrap(~ Variable, scales = "free_y", ncol = 2) +
-  labs(
-    title = "Comparison of Behavioural Variables (s) between Groups non-filtered by Paires",
-    x = "",
-    y = "Value",
-    caption = "Points represent individual measurements; violins show distribution; boxes show median and IQR."
+  # Segments linking the pairs
+  geom_line(
+    position = pos,
+    color = "gray40",
+    alpha = 0.5,
+    linewidth = 0.5,
+    show.legend = FALSE
   ) +
-  theme_minimal(base_size = 14) +
-  theme(
-    strip.text = element_text(face = "bold", size = 14),
-    axis.text.x = element_text(face = "bold", size = 12),
-    axis.title.y = element_text(size = 13),
-    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
-    plot.caption = element_text(size = 10, face = "italic")
+  
+  geom_point( 
+    position = pos,
+    size = 2, alpha = 0.7, 
+    shape = 21, color = "black", show.legend = FALSE 
+  ) + 
+  
+  scale_fill_manual(values = cb_palette) + 
+  scale_y_continuous(limits = c(-100, NA), expand = expansion(mult = c(0, 0.05))) + 
+  facet_wrap(~ Variable, scales = "free_y", ncol = 2) + 
+  labs( 
+    title = "Comparison of Behavioural Variables (s) between Groups non-filtered by Pairs", 
+    x = "", 
+    y = "Value", 
+    caption = "Points represent individual measurements; violins show distribution; boxes show median and IQR." 
+  ) + 
+  theme_minimal(base_size = 14) + 
+  theme( 
+    strip.text = element_text(face = "bold", size = 14), 
+    axis.text.x = element_text(face = "bold", size = 12), 
+    axis.title.y = element_text(size = 13), 
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5), 
+    plot.caption = element_text(size = 10, face = "italic"),
+    legend.position = "none"
   )
+

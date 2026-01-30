@@ -139,6 +139,23 @@ behaviour_wide <- combined_summary %>%
   select(ID, Group, Behaviour, TimeFrequency) %>%
   pivot_wider(names_from = Group, values_from = TimeFrequency)
 
+# Paired Mean and SE difference
+paired_diff_stats <- behaviour_wide %>%
+  filter(!is.na(unmated) & !is.na(mated)) %>%
+  mutate(
+    Diff     = unmated - mated,
+    Diff_pct = Diff * 100
+  ) %>%
+  group_by(Behaviour) %>%
+  summarise(
+    MeanDiff     = mean(Diff),
+    SEDiff       = sd(Diff) / sqrt(n()),
+    MeanDiff_pct = round(mean(Diff_pct),3),
+    SEDiff_pct   = round(sd(Diff_pct) / sqrt(n()),3),
+    N_pairs      = n(),
+    .groups = "drop"
+  )
+
 # Wilcoxon paired test per behaviour
 wilcoxon_results <- behaviour_wide %>%
   group_by(Behaviour) %>%
@@ -169,15 +186,28 @@ final_results <- behaviour_stats_wide %>%
     SETimeFreq_unmated_pct   = round(SETimeFreq_unmated * 100, 3),
     SETimeFreq_mated_pct     = round(SETimeFreq_mated * 100, 3)
   ) %>%
+  left_join(paired_diff_stats, by = "Behaviour") %>%   # ← add this
   left_join(wilcoxon_results, by = "Behaviour") %>%
   select(
     Behaviour,
+    
+    # Group means
     MeanTimeFreq_unmated, SETimeFreq_unmated, N_unmated,
-    MeanTimeFreq_mated, SETimeFreq_mated, N_mated,
+    MeanTimeFreq_mated,   SETimeFreq_mated,   N_mated,
+    
+    # Group means in %
     MeanTimeFreq_unmated_pct, SETimeFreq_unmated_pct,
-    MeanTimeFreq_mated_pct, SETimeFreq_mated_pct,
+    MeanTimeFreq_mated_pct,   SETimeFreq_mated_pct,
+    
+    # Paired differences (effect sizes)
+    MeanDiff, SEDiff,
+    MeanDiff_pct, SEDiff_pct,
+    N_pairs,
+    
+    # Statistics
     statistic, p_value
   )
+
 View(final_results)
 
 
@@ -207,6 +237,18 @@ discrete_wide <- discrete_counts %>%
   select(ID, Group, Behaviour, Occurrences) %>%
   pivot_wider(names_from = Group, values_from = Occurrences)
 
+# Paired Mean and SE difference
+discrete_paired_diff <- discrete_wide %>%
+  filter(!is.na(unmated) & !is.na(mated)) %>%
+  mutate(Diff = unmated - mated) %>%
+  group_by(Behaviour) %>%
+  summarise(
+    MeanDiff = mean(Diff),
+    SEDiff   = sd(Diff) / sqrt(n()),
+    N_pairs  = n(),
+    .groups = "drop"
+  )
+
 # Wilcoxon paired test
 discrete_wilcoxon <- discrete_wide %>%
   group_by(Behaviour) %>%
@@ -227,12 +269,15 @@ discrete_results <- discrete_stats %>%
     values_from = c(MeanOccurrences, SEOccurrences, N),
     names_sep = "_"
   ) %>%
+  left_join(discrete_paired_diff, by = "Behaviour") %>%
   left_join(discrete_wilcoxon, by = "Behaviour") %>%
   select(
     Behaviour,
     MeanOccurrences_unmated, SEOccurrences_unmated, N_unmated,
-    MeanOccurrences_mated, SEOccurrences_mated, N_mated,
+    MeanOccurrences_mated,   SEOccurrences_mated,   N_mated,
+    MeanDiff, SEDiff, N_pairs,
     statistic, p_value
   )
 
 View(discrete_results)
+
